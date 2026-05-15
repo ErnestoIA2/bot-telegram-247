@@ -1,54 +1,43 @@
-import os, sys, threading, telebot
+#!/usr/bin/env python3
+import os, sys, telebot
 from groq import Groq
-from flask import Flask
 
-# Lectura segura
+# === CONFIGURACIÓN ===
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GROQ_KEY = os.environ.get("GROQ_API_KEY")
 
-if not TOKEN:
-    print("❌ ERROR: TELEGRAM_TOKEN no está definido")
-    sys.exit(1)
-if not GROQ_KEY:
-    print("❌ ERROR: GROQ_API_KEY no está definido")
+if not TOKEN or not GROQ_KEY:
+    print("❌ ERROR: Faltan TELEGRAM_TOKEN o GROQ_API_KEY")
     sys.exit(1)
 
-print(f"✅ Claves cargadas. Token inicia con: {TOKEN[:10]}...")
+print("✅ Claves OK. Iniciando bot...")
 
-bot = telebot.TeleBot(TOKEN, skip_pending=True)
+# === INICIALIZACIÓN ===
+bot = telebot.TeleBot(TOKEN, skip_pending=True, timeout=30)
 client = Groq(api_key=GROQ_KEY)
-app = Flask(__name__)
 
-@app.route("/")
-def alive():
-    return "✅ Bot vivo", 200
-
-@bot.message_handler(commands=['start'])
+# === COMANDOS ===
+@bot.message_handler(commands=['start', 'help'])
 def start(m):
-    bot.reply_to(m, f"¡Hola {m.from_user.first_name}! 👋 Escribe tu pregunta.")
+    bot.reply_to(m, f"¡Hola {m.from_user.first_name}! 👋\nEscribe tu pregunta.")
 
+# === RESPUESTAS CON IA ===
 @bot.message_handler(func=lambda m: True)
 def responder(m):
     try:
+        bot.send_chat_action(m.chat.id, 'typing')
         r = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role":"user","content":m.text}],
-            max_tokens=300
+            max_tokens=400
         )
         bot.reply_to(m, r.choices[0].message.content)
+        print(f"✅ Respondido")
     except Exception as e:
-        print(f"❌ Error en IA: {e}")
+        print(f"❌ Error: {e}")
         bot.reply_to(m, "⚠️ Error temporal. Intenta de nuevo.")
 
+# === EJECUCIÓN ===
 if __name__ == "__main__":
-    # Inicia Flask en hilo separado
-    def run_flask():
-        app.run(host="0.0.0.0", port=8080, log_level="error")
-    threading.Thread(target=run_flask, daemon=True).start()
-    
-    print("✅ Bot activo. Esperando mensajes...")
-    try:
-        bot.infinity_polling(timeout=10)
-    except Exception as e:
-        print(f"❌ Bot detenido: {e}")
-        sys.exit(1)
+    print("🚀 Bot conectado. Esperando mensajes...")
+    bot.infinity_polling(timeout=30)
